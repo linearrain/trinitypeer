@@ -6,7 +6,7 @@
 ## Concept: 
 
 Trinitypeer - Efficient and memory/panic-safe Real-Time WebSocket streaming service, 
-which uses P2P connection to break the boundaries of the traditional streaming 
+which uses WebSocket connection to break the boundaries of the traditional streaming 
 and make sure the speed will raise even higher, then the current ones and likely 
 will open some perspectives on making the data transfer faster for the other massive 
 streaming services without a huge drawbacks to business and technology change.
