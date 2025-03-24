@@ -1,0 +1,10 @@
+[package]
+name = "TrinityServer"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+axum = { version = "0.7", features = ["ws"] }
+tokio = { version = "1", features = ["full"] }
+futures-util = { version = "0.3", features = ["sink"] }
+tower-http = { version = "0.5", features = ["trace"] }

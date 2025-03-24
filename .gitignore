@@ -1,0 +1,12 @@
+# === Rust build ===
+target/
+
+# === VS Code ===
+.vscode/
+
+# === IDEs and editors ===
+**/*.rs.bk
+*.swp
+.DS_Store
+*.log
+*.tmp
