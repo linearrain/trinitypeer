@@ -14,3 +14,7 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 log = "0.4"
 env_logger = "0.10"
+webrtc = "0.12.0"
+dashmap = "6.1.0"
+flacenc = {git = "https://github.com/yotarok/flacenc-rs", version = "0.5.0"}
+pretty_env_logger = "0.5.0"

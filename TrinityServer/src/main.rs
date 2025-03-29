@@ -1,7 +1,8 @@
 /* Подключаем модуль WebSockets (Блять, какого ещё и папки должны зазываться snake??????),
         в котором лежит вся логика сервера (принятие запросов)  */
 mod websockets;
-
+mod streamer;
+mod audio_coding;
 
 #[tokio::main]
 async fn main() {
