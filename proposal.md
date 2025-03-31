@@ -5,13 +5,14 @@
 
 ## Concept: 
 
-Trinitypeer - Efficient and memory/panic-safe Real-Time WebSocket streaming service, 
-which uses WebSocket connection to break the boundaries of the traditional streaming 
+Trinitypeer - Efficient and memory/panic-safe Real-Time Hybrid (WebRTC + HTTP / WebScoket) 
+streaming service, 
+which uses WebRTC connection to break the boundaries of the traditional streaming 
 and make sure the speed will raise even higher, then the current ones and likely 
 will open some perspectives on making the data transfer faster for the other massive 
 streaming services without a huge drawbacks to business and technology change.
 
-WebSockets are choosen as an alternative approach to the traditional HTTP-streaming,
+Hybrid approach is choosen as an alternative approach to the traditional HTTP-streaming,
 as it is faster for real-time data and streaming can be used with FLAC format, which 
 is better for the audio streaming, than the MP3, which heavily compresses the sound 
 (especially in the high frequencies in music such as Metal or Loud Electronic, such 
@@ -72,7 +73,7 @@ them is barely Rust-based and will be written in Rust with additional libraries 
 Obviosly, ```Rust``` programming language is the core of our service, but some 
 libraries must be used:
 
-```tokio``` - as the app is server-dependent, the async technology must be used 
+```actix``` - as the app is server-dependent, the async technology must be used 
 and tokio is one, that effective and lightweight for the server programming
 
 ```websocket``` - a library for opening the websocket connection, which will 
@@ -84,7 +85,8 @@ to the HTTP-streaming, popular nowadays for various purposes.
 to later use them for data passing on the current side and its recreation on the
  other side of the communication.
 
-```axum``` - incredibly fast file streaming.
+```tokio``` - still used in local time-control, like async sleep, which works well 
+with actix.
 
 ```log``` - for logging the events and errors, which will help to debug the code 
 and report the status of the service to the user.

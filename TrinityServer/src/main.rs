@@ -3,10 +3,9 @@
 mod websockets;
 mod streamer;
 mod audio_coding;
+mod server;
 
 #[tokio::main]
 async fn main() {
-
-    // Запускаем сервер WebSocket-ов
-    websockets::start_listening::run_server().await;
+    server::launch_server().await.expect("Failed to start server");
 }
