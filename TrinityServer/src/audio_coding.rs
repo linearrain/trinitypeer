@@ -14,7 +14,7 @@ use log::{error, info, warn};
 use pretty_env_logger;
 use serde::Serialize;
 
-fn encode_pcm_to_flac(pcm_data: &[i32], sample_rate: u32)  -> Option<Vec<u8>> {
+pub fn encode_pcm_to_flac(pcm_data: &[i32], sample_rate: u32)  -> Option<Vec<u8>> {
     // Setting all the needed settings
     // Channels: the number of audio channels (2 is stereo, please do not touch it)
     // Bits per sample: the number of bits used to represent each sample

@@ -1,16 +1,23 @@
 // A file intended for audio multicasting and live streaming
 // Trinitypeer, 2025, by Trinitycore
 
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use actix_web::Responder;
+use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
 use webrtc::peer_connection::RTCPeerConnection;
 use dashmap::DashMap;
-use dashmap::mapref::one::Ref;
+use dashmap::mapref::one::{Ref, RefMut};
+use std::ops::Deref;
 
 use actix_web::HttpResponse;
 use tokio::time::sleep;
 
-use crate::server::stream;
+use log::{error, info, warn};
+use pretty_env_logger;
+
+use tokio::time::{interval, Duration};
+use tokio::sync::broadcast;
 
 
 
@@ -20,6 +27,7 @@ use crate::server::stream;
 // Also, there are streamer id and stream name to better save the data
 // And make sure the code is clean, while still performant well enough
 
+#[derive(Clone, Debug)]
 pub struct Stream {
     streamer_id: usize,
     stream_name: String,
@@ -30,8 +38,10 @@ pub struct Stream {
 impl Stream {
     // New stream creation:
     
-    pub fn new(streamer_id: usize, stream_name: String, connection: 
-                                                    Option<Arc<RTCPeerConnection>>) -> Self {
+    pub fn new(streamer_id: usize, stream_name: String, 
+               connection: Option<Arc<RTCPeerConnection>>) -> Self {
+
+        
         Stream {
             streamer_id,
             stream_name,
@@ -40,10 +50,12 @@ impl Stream {
         }
     }
 
+    // Push the current streamed chunk
     pub fn load_chunk(&mut self, chunk: Vec<u8>) {
         self.current_chunk = chunk;
     }
 
+    // Get the current chunk
     pub fn get_chunk(&self) -> Vec<u8> {
         self.current_chunk.clone()
     }
@@ -54,8 +66,9 @@ impl Stream {
 // Represents a single datatype with an impl methods
 // to simplify the code for maintaining the streams
 
+#[derive(Clone, Debug)]
 pub struct ActiveStreams {
-    streams: Arc<DashMap<String, Stream>>,
+    pub streams: Arc<DashMap<String, Stream>>,
 }
 
 impl ActiveStreams {
@@ -89,40 +102,92 @@ impl ActiveStreams {
     // This one normally should be called outside of this file
     // And should be called by the main controller of the streams
     
-    pub fn add_stream(&self, c_stream: Stream) {
+    pub fn add_stream(&self, c_stream: Stream) -> Result<(), Box<dyn std::error::Error>> {
+        // Check if the stream already exists
+        if self.get_stream(&c_stream.stream_name).is_some() {
+            error!("Stream with name {} already exists", c_stream.stream_name);
+            return Err(Box::from(format!("Stream with name {} already exists", c_stream.stream_name)));
+        }
+
+        // In case the stream indeed could be created, creating it
+
+        info!("Creating stream with name {}", c_stream.stream_name);
         self.streams.insert(c_stream.stream_name.clone(), c_stream);
+
+        Ok(())
     }
 
 
 
     // Getting the stream by its name
-    //pub fn get_stream(&self, stream_name: &str) -> Option<&Stream> {
-    //    self.streams.get(stream_name).map(|r| r.value())
-    //} 
+    pub fn get_stream(&self, stream_name: &str) -> Option<Stream> {
+        self.streams.get(stream_name).map(|r| r.value().clone())
+    } 
+
+    // Getting the stream by its name, but as a reference
+    pub fn get_stream_ref(&self, stream_name: &str) -> Option<Ref<String, Stream>> {
+        self.streams.get(stream_name)
+    }
+
+
+
+    // For altering the Stream (for side of the streamer) this function becomes very handy
+    // It is a mutable reference to the stream, so it can be changed
+    // Preferably, it should change the current chunk of the stream
+    // But anything should be acceptable
+
+    pub fn get_stream_ref_mut(&self, stream_name: &str) -> Option<RefMut<String, Stream>> {
+        self.streams.get_mut(stream_name)
+    }
 }
 
 // A function to perform the stream
 // This one is called by the main controller of the streams
 
-async fn perform_stream(stream_list: &ActiveStreams, stream_name: String) -> impl Responder {
-    // Getting the stream by its identifier
-    // let current_stream = stream_list.get_stream(stream_name.clone());
-    
-    // If the stream is not found, do nothing and end the function
-    // if current_stream.is_none() {
-    //    return HttpResponse::NotFound().body("Stream not found")
-    //}
+pub async fn perform_stream(stream_list: &ActiveStreams, stream_name: String, fragment_len: u8) -> impl Responder {
+    if stream_list.get_stream(&stream_name).is_none() {
+        warn!("Stream not found");
+        return HttpResponse::NotFound().body("Stream not found");
+    }
 
-    //let current_stream = current_stream.unwrap();
+    let stream_list = stream_list.clone();
+    let mut ticker = interval(Duration::from_millis((fragment_len as u64) * 1000));
 
     let async_stream_thread = async_stream::stream! {
+        let mut prev_chunk_hash : u64 = 0;
+
         loop {
-            let chunk = Vec::from([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
-            yield Ok::<_, actix_web::Error>(actix_web::web::Bytes::from(chunk));
-            sleep(std::time::Duration::from_secs(2)).await;        
+            ticker.tick().await;
+
+            if let Some(current_stream) = stream_list.get_stream(&stream_name) {
+                let chunk = current_stream.get_chunk();
+
+                let current_chunk_hash = hash_vecu8(&chunk);
+                if current_chunk_hash == prev_chunk_hash {
+                    info!("No new chunk to stream");
+                    continue;
+                }
+
+                prev_chunk_hash = current_chunk_hash;            
+
+                yield Ok::<_, actix_web::Error>(actix_web::web::Bytes::from(chunk));
+            } else {
+                warn!("Stream disappeared during playback");
+                break;
+            }
         }
     };
 
     HttpResponse::Ok()
-            .content_type("audio/flac").streaming(async_stream_thread)
+        .append_header(("Connection", "keep-alive"))
+        .content_type("audio/flac")
+        .streaming(async_stream_thread)
+}
+
+fn hash_vecu8(vec : &Vec<u8>) -> u64 {
+    let mut hasher = DefaultHasher::new();
+    vec.hash(&mut hasher);
+    let hash = hasher.finish();
+
+    hash
 }
