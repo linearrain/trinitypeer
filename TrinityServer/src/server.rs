@@ -24,7 +24,7 @@ pub async fn launch_server(stream_list : ActiveStreams, fragment_len: u8)
             .service(load_chunk_to_srv)
             .route("/stream/{id}", web::get().to(stream))
     })
-    .bind(("10.10.14.36", 13412))?
+    .bind(("192.168.122.1", 13412))?
     .run()
     .await
 }
@@ -58,7 +58,7 @@ async fn load_chunk_to_srv(stream_id: web::Path<String>,
 
     if let Some(mut s) = stream {
         info!("The chunk is loading into the stream");
-        s.load_chunk(chunk.into_inner());
+        s.load_chunk(chunk.into_inner()).await;
         HttpResponse::Ok().body(format!("Chunk loaded to stream ID: {:?}", stream_id))
     } else {
         warn!("Stream ID: {:?} not found", stream_id);
@@ -73,7 +73,7 @@ async fn load_chunk_to_srv(stream_id: web::Path<String>,
 async fn create_stream(streamname :web::Path<String>, stream_list: web::Data<ActiveStreams>) -> HttpResponse {
     let streamname = streamname.into_inner(); 
     let stream = crate::streamer::Stream::new(0, streamname.clone(), None);
-    if stream_list.add_stream(stream).is_err() {
+    if stream_list.add_stream(stream).await.is_err() {
         error!("Stream with name {} already exists", streamname);
         return HttpResponse::BadRequest().body(format!("Stream with name {} already exists", streamname));
     }
@@ -91,5 +91,14 @@ async fn stream(stream_id: web::Path<String>, active_streams: web::Data<ActiveSt
 
     // Perform the streaming operation
     // This function is defined in the streamer.rs file in the case of wondering
-    perform_stream(&active_streams, stream_id, fragment_len).await
+    perform_stream(active_streams, stream_id, fragment_len).await
 }
+
+/*
+async fn get_10_active_streams() -> impl Responder {
+    // This function is needed to get the current
+    // It wil return 10 random currently going streams
+
+
+}
+*/

@@ -1,23 +1,21 @@
 // A file intended for audio multicasting and live streaming
 // Trinitypeer, 2025, by Trinitycore
 
-use std::sync::{Arc, Mutex};
-use actix_web::Responder;
+use std::sync::Arc;
+use std::thread::current;
+use actix_web::{web, Responder};
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 use webrtc::peer_connection::RTCPeerConnection;
 use dashmap::DashMap;
 use dashmap::mapref::one::{Ref, RefMut};
-use std::ops::Deref;
 
 use actix_web::HttpResponse;
-use tokio::time::sleep;
 
 use log::{error, info, warn};
-use pretty_env_logger;
 
 use tokio::time::{interval, Duration};
-use tokio::sync::broadcast;
+use tokio::sync::{Notify, RwLock};
 
 
 
@@ -27,12 +25,13 @@ use tokio::sync::broadcast;
 // Also, there are streamer id and stream name to better save the data
 // And make sure the code is clean, while still performant well enough
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct Stream {
     streamer_id: usize,
     stream_name: String,
     connection: Option<Arc<RTCPeerConnection>>,
-    current_chunk: Vec<u8>,
+    current_chunk: Arc<RwLock<Vec<u8>>>,
+    change: Arc<Notify>,
 }
 
 impl Stream {
@@ -46,18 +45,19 @@ impl Stream {
             streamer_id,
             stream_name,
             connection,
-            current_chunk: vec![1, 2, 3, 4],
+            current_chunk: Arc::new(RwLock::new(Vec::new())),
+            change: Arc::new(Notify::new()),
         }
     }
 
     // Push the current streamed chunk
-    pub fn load_chunk(&mut self, chunk: Vec<u8>) {
-        self.current_chunk = chunk;
+    pub async fn load_chunk(&mut self, chunk: Vec<u8>) {
+        *self.current_chunk.write().await = chunk;
     }
 
     // Get the current chunk
-    pub fn get_chunk(&self) -> Vec<u8> {
-        self.current_chunk.clone()
+    pub async fn get_chunk(&self) -> Vec<u8> {
+        self.current_chunk.read().await.clone()
     }
 }
 
@@ -92,7 +92,7 @@ impl ActiveStreams {
     // A method to remove an existing stream, which was already stopped
     // By the user either by system considerations to save the resources
 
-    pub fn remove_stream(&self, stream_id: String) {
+    pub async fn remove_stream(&self, stream_id: String) {
         self.streams.remove(&stream_id);
     }
 
@@ -102,9 +102,9 @@ impl ActiveStreams {
     // This one normally should be called outside of this file
     // And should be called by the main controller of the streams
     
-    pub fn add_stream(&self, c_stream: Stream) -> Result<(), Box<dyn std::error::Error>> {
+    pub async fn add_stream(&self, c_stream: Stream) -> Result<(), Box<dyn std::error::Error>> {
         // Check if the stream already exists
-        if self.get_stream(&c_stream.stream_name).is_some() {
+        if self.get_stream(&c_stream.stream_name).await.is_some() {
             error!("Stream with name {} already exists", c_stream.stream_name);
             return Err(Box::from(format!("Stream with name {} already exists", c_stream.stream_name)));
         }
@@ -120,16 +120,33 @@ impl ActiveStreams {
 
 
     // Getting the stream by its name
-    pub fn get_stream(&self, stream_name: &str) -> Option<Stream> {
-        self.streams.get(stream_name).map(|r| r.value().clone())
-    } 
+    //pub async fn get_stream(&self, stream_name: &str) -> Option<Stream> {
+    //    self.streams.get(stream_name).map(|r| r.value().clone())
+    //} 
 
     // Getting the stream by its name, but as a reference
-    pub fn get_stream_ref(&self, stream_name: &str) -> Option<Ref<String, Stream>> {
+    pub async fn get_stream(&self, stream_name: &str) -> Option<Ref<String, Stream>> {
         self.streams.get(stream_name)
     }
 
 
+
+    // Getting the amount of random streams, which will be used
+    // to get random active streams in the HTTP route get_10active_streams
+
+    /*
+    pub async fn get_random_streams(&self, amount : usize) -> Vec<&Stream> {
+        let mut selection : Vec<&Stream> = Vec::new();
+
+        self.streams.iter().for_each(|stream| {
+            selection.push(stream.value().clone());
+        }); 
+
+
+        selection.truncate(amount);
+        selection
+    }
+    */
 
     // For altering the Stream (for side of the streamer) this function becomes very handy
     // It is a mutable reference to the stream, so it can be changed
@@ -144,34 +161,41 @@ impl ActiveStreams {
 // A function to perform the stream
 // This one is called by the main controller of the streams
 
-pub async fn perform_stream(stream_list: &ActiveStreams, stream_name: String, fragment_len: u8) -> impl Responder {
-    if stream_list.get_stream(&stream_name).is_none() {
+pub async fn perform_stream(stream_list: web::Data<ActiveStreams>, stream_name: String, fragment_len: u8) -> impl Responder {
+    let stream = stream_list.get_stream(&stream_name).await;
+
+    if stream.is_none() {
         warn!("Stream not found");
         return HttpResponse::NotFound().body("Stream not found");
     }
 
-    let stream_list = stream_list.clone();
     let mut ticker = interval(Duration::from_millis((fragment_len as u64) * 1000));
 
+    let stream_list = stream_list.clone();
+
+
     let async_stream_thread = async_stream::stream! {
-        let mut prev_chunk_hash : u64 = 0;
+    
+    let mut prev_chunk_hash : u64 = 0;
 
-        loop {
-            ticker.tick().await;
+    loop {
+        ticker.tick().await;
 
-            if let Some(current_stream) = stream_list.get_stream(&stream_name) {
-                let chunk = current_stream.get_chunk();
+        if let Some(current_stream) = stream_list.get_stream(&stream_name).await {
+            let chunk = current_stream.get_chunk().await;
 
-                let current_chunk_hash = hash_vecu8(&chunk);
-                if current_chunk_hash == prev_chunk_hash {
-                    info!("No new chunk to stream");
-                    continue;
-                }
+            let current_chunk_hash = hash_vecu8(&chunk);
 
-                prev_chunk_hash = current_chunk_hash;            
+            if current_chunk_hash == prev_chunk_hash {
+                info!("No new chunk to stream");
+                continue;
+            }
 
-                yield Ok::<_, actix_web::Error>(actix_web::web::Bytes::from(chunk));
-            } else {
+            prev_chunk_hash = current_chunk_hash;            
+
+            yield Ok::<_, actix_web::Error>(actix_web::web::Bytes::from(chunk));
+            } 
+            else {
                 warn!("Stream disappeared during playback");
                 break;
             }
