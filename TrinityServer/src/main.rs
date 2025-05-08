@@ -2,6 +2,9 @@ mod websockets;
 mod streamer;
 mod audio_coding;
 mod server;
+mod db;
+mod auth_logic;
+use dotenv::dotenv;
 
 use log::{error, info, warn};
 use pretty_env_logger;

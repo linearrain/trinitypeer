@@ -2,12 +2,23 @@
 // Also, routes the people from the stream_id to the function
 // Which is processing the stream in streamer.rs file
 
-use actix_web::{web, App, HttpServer, HttpResponse};
-use crate::streamer::{perform_stream, ActiveStreams};
+use actix_web::{http, web, App, HttpResponse, HttpServer};
+// use jsonwebtoken::crypto::verify;
+use webrtc::media::audio::buffer::info;
+use crate::{auth_logic::models::User, db::init_db, streamer::{perform_stream, ActiveStreams}};
 use actix_web::Responder;
 
 use log::{error, info, warn};
 use pretty_env_logger;
+
+// Import of model for authentication request
+use crate::auth_logic::models::LoginRequest;
+
+// Import of library to verify and hash passwords
+use bcrypt::{verify, hash};
+
+// Import of function which creates jwt token after successful authorization
+use crate::auth_logic::jwt_functions::create_jwt;
 
 // The main function for manipulating the server
 // There are some main routers which users can use for their needs
@@ -22,9 +33,10 @@ pub async fn launch_server(stream_list : ActiveStreams, fragment_len: u8)
             .service(index)
             .service(create_stream)
             .service(load_chunk_to_srv)
+            .service(login)
             .route("/stream/{id}", web::get().to(stream))
     })
-    .bind(("192.168.122.1", 13412))?
+    .bind(("10.10.12.246", 13412))?
     .run()
     .await
 }
@@ -102,3 +114,66 @@ async fn get_10_active_streams() -> impl Responder {
 
 }
 */
+
+// This function is used to authenticate user by their credentails 
+// (username and password) and then returns token
+#[actix_web::post("/login")]
+async fn login(req: web::Json<LoginRequest>) -> impl Responder {
+    let username = req.username.to_string();
+    let password = req.password.to_string();
+
+    // Basic validation for values received on input
+    // TODO: add validation by REGEX from sql injections
+    if(username.len() <= 3 || password.len() <= 3){
+        error!("User credentials is not in valid form!");
+        HttpResponse::InternalServerError().body("Worng credentials!");
+    }
+
+    // Creates session of communication with database
+    let pool = init_db().await;
+
+    // Looks for user in database
+    match pool {
+        Some(pool) => {
+
+            // Query to enter in variable user data from database
+            let user = sqlx::query_as::<_, User>(
+                "SELECT id, 
+                        name, 
+                        nickname, 
+                        profile_pic_path, 
+                        password_hash 
+                FROM users WHERE name = $1")
+                .bind(&username)
+                .fetch_optional(&pool) 
+                .await;
+
+            match user {
+                Ok(Some(user)) => {
+                    // User is found. Starts checking on correct password.                    
+                    let password_hash = user.password_hash;
+                    let password_is_correct = verify(&password, &password_hash)
+                        .unwrap_or(false);
+                    if password_is_correct {
+                        let token = create_jwt(&username);
+                        info!("Login successful. Token: {:?}", token);
+                    } else {
+                        error!("Incorrect Password");
+                    }
+                },
+                Ok(None) => {
+                    error!("User not found");
+                    HttpResponse::InternalServerError().body("User not found!");
+                },
+                Err(e) => {
+                    HttpResponse::InternalServerError().body(format!("Server error: {}", e));
+                }
+            }
+        },
+        None => {
+            HttpResponse::InternalServerError().body("Authentication process failed");
+        }
+    }
+
+    HttpResponse::Ok().body("Logged in!")
+}

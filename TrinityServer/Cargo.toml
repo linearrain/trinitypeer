@@ -22,3 +22,10 @@ actix = "0.13.5"
 actix-web = "4.10.2"
 async-stream = "0.3.6"
 tokio-stream = "0.1.17"
+jsonwebtoken = "9"         # for creating and validating JWT
+argon2 = "0.5"             # for password hashing
+uuid = { version = "1", features = ["v4"] } # for user IDs
+sqlx = { version = "0.7", features = ["runtime-tokio", "postgres", "uuid", "chrono", "tls-rustls"] }
+chrono = "0.4.41"
+bcrypt = "0.17"
+dotenv = "0.15"
