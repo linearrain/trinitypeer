@@ -34,6 +34,7 @@ pub async fn launch_server(stream_list : ActiveStreams, fragment_len: u8)
             .service(create_stream)
             .service(load_chunk_to_srv)
             .service(login)
+            .service(user_data)
             .service(protectedArea)
             .service(register)
             .service(refreshToken)
@@ -237,7 +238,7 @@ async fn register(req: web::Json<RegistrationRequest>) -> impl Responder {
 // (username and password) and then returns token
 #[actix_web::post("/login")]
 async fn login(req: web::Json<LoginRequest>) -> impl Responder {
-
+    info!("Login request received");
     
     let username = req.username.to_string();
     let password = req.password.to_string();
@@ -288,7 +289,7 @@ async fn login(req: web::Json<LoginRequest>) -> impl Responder {
                         info!("Login successful. Acess Token: {:?}", access_token);
                         info!("Refresh Token: {:?}", refresh_token);
                         
-                        HttpResponse::Ok().json(json!({
+                        return HttpResponse::Ok().json(json!({
                             "access_token": access_token,
                             "refresh_token": refresh_token
                         }));                        
@@ -330,4 +331,56 @@ pub async fn get_all_active_streams(stream_list : web::Data<ActiveStreams>) -> i
     let streams = stream_list.get_streams().await;
 
     HttpResponse::Ok().json(serde_json::json!(streams))
+}
+
+// This function is used to get user data
+// It will be used to get user data from the database
+// and return it to the client
+#[actix_web::get("/user_data")]
+async fn user_data(user: AuthenticatedUser) -> impl Responder {
+    info!("User data request received");
+    let pool = init_db().await;
+    info!("Debug");
+    match pool {
+        Some(pool) => {
+            // Query to enter in variable user data from database
+            info!("Trying to find user by nmae {}", user.username);
+            let mut user = sqlx::query_as::<_, User>(
+                "SELECT id, 
+                        name, 
+                        nickname, 
+                        profile_pic_path,
+                        password_hash 
+                FROM users WHERE name = $1")
+                .bind(&user.username.to_string())
+                .fetch_optional(&pool) 
+                .await;
+
+            if let Ok(Some(user)) = &user {
+                info!("Debug trying to get user by name: {}", user.name);
+            } else {
+                error!("Failed to retrieve user or user not found");
+            }
+            
+            match user {
+                Ok(Some(mut user)) => {
+                    info!("User data found: {}", user.name);
+                    info!("Token is valid, user data is sending in json");
+                    user.password_hash = String::new(); 
+                    return HttpResponse::Ok().json(user);
+                },
+                Ok(None) => {
+                    error!("User not found");
+                    return HttpResponse::InternalServerError().body("User not found!");
+                },
+                Err(e) => {
+                    error!("Error while fetching user data: {}", e);
+                    return HttpResponse::InternalServerError().body(format!("Server error: {}", e));
+                }
+            }
+        },
+        None => {
+            return HttpResponse::InternalServerError().body("Failed to connect to the database.");
+        }
+    }
 }

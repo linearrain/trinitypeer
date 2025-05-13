@@ -4,7 +4,7 @@ use actix::fut::{future::result, ready};
 use dotenv::dotenv;
 use jsonwebtoken::{decode, Algorithm, DecodingKey, Validation};
 use log::{error, info};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 use futures_util::future::Ready; 
 use actix_web::{dev::Payload, error::ErrorUnauthorized, Error, FromRequest, HttpRequest, HttpResponse};
@@ -30,7 +30,7 @@ pub struct RegistrationRequest {
 }
 
 // This structure is using by functions which require to find user from database, or register new user.
-#[derive(FromRow)]
+#[derive(FromRow, Serialize)]
 pub struct User {
     pub id: i32,
     pub name: String,
@@ -52,6 +52,8 @@ impl FromRequest for AuthenticatedUser {
     type Future = Ready<Result<AuthenticatedUser, Self::Error>>;
 
     fn from_request(req: &HttpRequest, _payload: &mut Payload) -> Self::Future {
+        info!("Token validation started");
+
         dotenv().ok();
         let auth_header = req.headers().get("Authorization");
 
