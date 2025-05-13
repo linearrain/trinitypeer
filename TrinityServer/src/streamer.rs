@@ -131,22 +131,16 @@ impl ActiveStreams {
 
 
 
-    // Getting the amount of random streams, which will be used
-    // to get random active streams in the HTTP route get_10active_streams
+    // Getting all the streams, currently existing in the system
+    // Used in the route for rust presentation
+    // FUTURE: Considering filtering the streams by their category
 
-    /*
-    pub async fn get_random_streams(&self, amount : usize) -> Vec<&Stream> {
-        let mut selection : Vec<&Stream> = Vec::new();
-
-        self.streams.iter().for_each(|stream| {
-            selection.push(stream.value().clone());
-        }); 
-
-
-        selection.truncate(amount);
-        selection
+    pub async fn get_streams(&self) -> Vec<String> {
+        self.streams.iter().map(|r| 
+            r.value().stream_name.clone()).collect()
     }
-    */
+
+
 
     // For altering the Stream (for side of the streamer) this function becomes very handy
     // It is a mutable reference to the stream, so it can be changed
@@ -161,7 +155,7 @@ impl ActiveStreams {
 // A function to perform the stream
 // This one is called by the main controller of the streams
 
-pub async fn perform_stream(stream_list: web::Data<ActiveStreams>, stream_name: String, fragment_len: u8) -> impl Responder {
+pub async fn perform_stream(stream_list: web::Data<ActiveStreams>, stream_name: String, fragment_len: f32) -> impl Responder {
     let stream = stream_list.get_stream(&stream_name).await;
 
     if stream.is_none() {
@@ -169,7 +163,7 @@ pub async fn perform_stream(stream_list: web::Data<ActiveStreams>, stream_name: 
         return HttpResponse::NotFound().body("Stream not found");
     }
 
-    let mut ticker = interval(Duration::from_millis((fragment_len as u64) * 1000));
+    let mut ticker = interval(Duration::from_millis((fragment_len * 1000.0) as u64));
 
     let stream_list = stream_list.clone();
 

@@ -2,21 +2,14 @@
 // Also, routes the people from the stream_id to the function
 // Which is processing the stream in streamer.rs file
 
-use std::env;
-
-use actix_web::{body, error::ErrorUnauthorized, http, web, App, FromRequest, HttpRequest, HttpResponse, HttpServer};
+use actix_web::{web, App, HttpRequest, HttpResponse, HttpServer};
 use argon2::password_hash::{self, rand_core::impls};
-use jsonwebtoken::{decode, Algorithm, DecodingKey, Validation};
 use serde_json::json;
-use uuid::Error;
-// use jsonwebtoken::crypto::verify;
-use webrtc::media::audio::buffer::info;
-use crate::{auth_logic::{jwt_functions::{decode_jwt, Claims}, models::{AuthenticatedUser, 
+use crate::{auth_logic::{jwt_functions::{decode_jwt}, models::{AuthenticatedUser, 
     RegistrationRequest, User}}, db::init_db, streamer::{perform_stream, ActiveStreams}};
 use actix_web::Responder;
 
 use log::{error, info, warn};
-use pretty_env_logger;
 
 // Import of model for authentication request
 use crate::auth_logic::models::LoginRequest;
@@ -44,9 +37,10 @@ pub async fn launch_server(stream_list : ActiveStreams, fragment_len: u8)
             .service(protectedArea)
             .service(register)
             .service(refreshToken)
+            .service(get_all_active_streams)
             .route("/stream/{id}", web::get().to(stream))
     })
-    .bind(("10.10.12.246", 13412))?
+    .bind(("0.0.0.0", 13412))?
     .run()
     .await
 }
@@ -111,7 +105,7 @@ async fn stream(stream_id: web::Path<String>, active_streams: web::Data<ActiveSt
 
     // The fragment length is the length of the chunk which is sent to the user
 
-    let fragment_len = 1; 
+    let fragment_len = 0.5; 
 
     // Perform the streaming operation
     // This function is defined in the streamer.rs file in the case of wondering
@@ -317,4 +311,23 @@ async fn login(req: web::Json<LoginRequest>) -> impl Responder {
     }
 
     HttpResponse::Ok().body("Logged in!")
+}
+
+
+
+// An endpoint to get all the streams 
+// Which are currently going on the server
+// It would be shown at the front-end as a list 
+// of the streams, 
+// however it is only for rust presentation
+// and will be removed in the future
+// in case it will grow then
+
+#[actix_web::get("/get_all_streams")]
+pub async fn get_all_active_streams(stream_list : web::Data<ActiveStreams>) -> impl Responder {
+    // Getting the list from the streams
+
+    let streams = stream_list.get_streams().await;
+
+    HttpResponse::Ok().json(serde_json::json!(streams))
 }
