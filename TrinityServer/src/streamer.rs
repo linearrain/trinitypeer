@@ -178,6 +178,8 @@ pub async fn perform_stream(stream_list: web::Data<ActiveStreams>, stream_name: 
         if let Some(current_stream) = stream_list.get_stream(&stream_name).await {
             let chunk = current_stream.get_chunk().await;
 
+            let chunk_len = chunk.len() as u32;
+
             let current_chunk_hash = hash_vecu8(&chunk);
 
             if current_chunk_hash == prev_chunk_hash {
@@ -185,10 +187,15 @@ pub async fn perform_stream(stream_list: web::Data<ActiveStreams>, stream_name: 
                 continue;
             }
 
-            prev_chunk_hash = current_chunk_hash;            
+            prev_chunk_hash = current_chunk_hash;
 
-            yield Ok::<_, actix_web::Error>(actix_web::web::Bytes::from(chunk));
-            } 
+            // Preparing the custom chunk
+            let mut custom_chunk : Vec<u8> = Vec::new();
+            custom_chunk.extend_from_slice(&chunk_len.to_be_bytes());
+            custom_chunk.extend_from_slice(&chunk);
+
+            yield Ok::<_, actix_web::Error>(actix_web::web::Bytes::from(custom_chunk));
+        } 
             else {
                 warn!("Stream disappeared during playback");
                 break;
