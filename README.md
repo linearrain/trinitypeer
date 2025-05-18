@@ -6,7 +6,7 @@ It is a git repo for the server of our social network prototype, which is hosted
 
 # IMPORTANT: Trinitypeer CLIENT
 
-The trinitypeer client has being developed inside of [This Repository](https://github.com/linearrain/trinitypeer-clientside). It was written in Svelte and MORE THAN A HALF in Rust. 
+The trinitypeer client has being developed inside of [This Repository](https://github.com/linearrain/trinitypeer-clientside). It was written in Svelte and MORE THAN A HALF (based both on functionality importance and code length) in Rust. 
 
 ## Functions, implemented in Rust including, but not limited to:
 
