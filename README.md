@@ -17,3 +17,7 @@ The trinitypeer client has being developed inside of [This Repository](https://g
 - Streaming capability
 - FULL IMPLEMENTATION of the music player, no Javascript used in any part of it
 - Buffering for the music player and connection stabilizer
+
+# IMPORTANT N2: EVALUATION
+
+As the file in FIIT Rust course did not specified the exact place to deliver the evaluation, we are included it to the repository we have worked on lately: [EVALUATION](https://github.com/linearrain/trinitypeer-clientside/blob/main/TrinityReport.pdf)
