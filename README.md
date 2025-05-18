@@ -26,4 +26,4 @@ As the file in FIIT Rust course did not specified the exact place to deliver the
 
 
 
-* - based both on functionality importance and code length
+\* \- based both on functionality importance and code length
